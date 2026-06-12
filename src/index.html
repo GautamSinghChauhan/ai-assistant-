@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>AI Assistant</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: rgba(13,17,23,0.96);
+      color: #E6EDF3;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-radius: 14px;
+      border: 1px solid #30363D;
+    }
+
+    /* TITLEBAR */
+    #titlebar {
+      background: rgba(22,27,34,0.98);
+      border-bottom: 1px solid #21262D;
+      padding: 0 12px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      -webkit-app-region: drag;
+      flex-shrink: 0;
+      border-radius: 14px 14px 0 0;
+    }
+    .tb-left { display:flex; align-items:center; gap:8px; }
+    .app-title { font-size:13px; font-weight:600; color:#E6EDF3; }
+    .badge-free {
+      font-size:10px; background:#1A3320; color:#3FB950;
+      padding:2px 7px; border-radius:20px; border:1px solid #2EA043; font-weight:600;
+    }
+    .badge-hidden {
+      font-size:10px; background:#1A2A3A; color:#58A6FF;
+      padding:2px 7px; border-radius:20px; border:1px solid #2196F3;
+    }
+    .tb-right {
+      display:flex; align-items:center; gap:4px;
+      -webkit-app-region: no-drag;
+    }
+    #status-dot { width:7px; height:7px; border-radius:50%; background:#3FB950; }
+    #status-lbl { font-size:11px; color:#8B949E; margin-right:4px; }
+
+    /* Position buttons */
+    .pos-btn {
+      width:24px; height:24px; border-radius:5px; border:1px solid #30363D;
+      background:transparent; color:#555; font-size:11px; cursor:pointer;
+      display:flex; align-items:center; justify-content:center;
+      transition:all 0.15s;
+    }
+    .pos-btn:hover { background:#21262D; color:#E6EDF3; border-color:#555; }
+
+    .wbtn {
+      width:28px; height:28px; border-radius:6px; border:none;
+      background:transparent; color:#8B949E; font-size:14px; cursor:pointer;
+      display:flex; align-items:center; justify-content:center;
+      transition:background 0.15s;
+    }
+    .wbtn:hover { background:#21262D; color:#E6EDF3; }
+    .wbtn.cls:hover { background:#8B0000; color:#fff; }
+
+    /* CHAT */
+    #chat {
+      flex:1; overflow-y:auto; padding:12px 14px;
+      display:flex; flex-direction:column; gap:9px;
+    }
+    #chat::-webkit-scrollbar { width:4px; }
+    #chat::-webkit-scrollbar-thumb { background:#30363D; border-radius:2px; }
+
+    #welcome {
+      flex:1; display:flex; flex-direction:column;
+      align-items:center; justify-content:center;
+      gap:6px; color:#30363D; text-align:center; padding:30px;
+    }
+    #welcome .ico { font-size:36px; margin-bottom:4px; }
+    #welcome h2 { font-size:17px; color:#8B949E; font-weight:500; }
+    #welcome p  { font-size:12px; color:#444D56; }
+    .chips { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; margin-top:10px; }
+    .chip {
+      background:#161B22; border:1px solid #21262D; color:#8B949E;
+      font-size:11px; padding:4px 10px; border-radius:20px; cursor:pointer;
+      transition:all 0.15s;
+    }
+    .chip:hover { border-color:#58A6FF; color:#58A6FF; }
+
+    .bubble {
+      max-width:88%; padding:9px 13px; border-radius:10px;
+      line-height:1.65; font-size:13px; word-break:break-word;
+      user-select:text; animation:pop 0.18s ease;
+    }
+    @keyframes pop {
+      from { opacity:0; transform:translateY(6px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    .bubble .role { font-size:10px; font-weight:700; margin-bottom:4px; letter-spacing:0.4px; }
+    .bubble.user { background:#1C2D4A; border-left:3px solid #2196F3; align-self:flex-end; }
+    .bubble.user .role { color:#58A6FF; }
+    .bubble.ai   { background:#172A1E; border-left:3px solid #3FB950; align-self:flex-start; }
+    .bubble.ai   .role { color:#3FB950; }
+    .bubble.sys  { background:#21262D; border-left:3px solid #555; align-self:center; max-width:85%; font-size:12px; color:#8B949E; }
+
+    .bubble pre {
+      background:#010409; border:1px solid #30363D; border-radius:6px;
+      padding:10px; margin-top:8px; overflow-x:auto;
+      font-size:11px; font-family:'Consolas',monospace; color:#79C0FF; line-height:1.6;
+    }
+    .bubble code {
+      background:#010409; padding:1px 4px; border-radius:3px;
+      font-family:'Consolas',monospace; font-size:11px; color:#79C0FF;
+    }
+
+    .typing {
+      background:#172A1E; border-left:3px solid #3FB950; padding:10px 14px;
+      border-radius:10px; align-self:flex-start;
+      display:flex; gap:4px; align-items:center;
+    }
+    .dot { width:6px; height:6px; border-radius:50%; background:#3FB950; animation:blink 1.2s infinite; }
+    .dot:nth-child(2) { animation-delay:0.2s; }
+    .dot:nth-child(3) { animation-delay:0.4s; }
+    @keyframes blink {
+      0%,80%,100% { transform:scale(0.5); opacity:0.3; }
+      40%          { transform:scale(1); opacity:1; }
+    }
+
+    /* INPUT */
+    #input-area {
+      background:rgba(22,27,34,0.98); border-top:1px solid #21262D;
+      padding:9px 12px 11px; flex-shrink:0;
+      border-radius: 0 0 14px 14px;
+    }
+    #input-box {
+      display:flex; align-items:flex-end; gap:6px;
+      background:#010409; border:1px solid #30363D;
+      border-radius:10px; padding:7px 10px; transition:border-color 0.2s;
+    }
+    #input-box:focus-within { border-color:#2196F3; }
+    #msg-input {
+      flex:1; background:transparent; border:none; outline:none;
+      color:#E6EDF3; font-size:13px; font-family:inherit;
+      resize:none; max-height:100px; line-height:1.5; user-select:text;
+    }
+    #msg-input::placeholder { color:#2A2A2A; }
+
+    .ibtn {
+      background:transparent; border:1px solid #30363D; color:#8B949E;
+      border-radius:7px; padding:5px 10px; font-size:11px; cursor:pointer;
+      font-family:inherit; transition:all 0.15s; white-space:nowrap; flex-shrink:0;
+    }
+    .ibtn:hover { background:#21262D; color:#E6EDF3; border-color:#555; }
+    #mic-btn.on { background:#2D0F0F; border-color:#F85149; color:#F85149; animation:glow 1s infinite; }
+    @keyframes glow { 0%,100%{opacity:1} 50%{opacity:0.6} }
+
+    #send-btn {
+      background:#1F6FEB; border:none; color:#fff; border-radius:7px;
+      padding:6px 14px; font-size:12px; font-weight:600; cursor:pointer;
+      font-family:inherit; transition:background 0.15s; flex-shrink:0;
+    }
+    #send-btn:hover { background:#388BFD; }
+    #send-btn:disabled { background:#1C2128; color:#444; cursor:not-allowed; }
+
+    #bar { text-align:center; font-size:10px; color:#21262D; margin-top:5px; }
+
+    /* Privacy reapply button */
+    #privacy-btn {
+      font-size:10px; background:transparent; border:1px solid #21262D;
+      color:#30363D; padding:2px 7px; border-radius:4px; cursor:pointer;
+      transition:all 0.15s; -webkit-app-region: no-drag;
+    }
+    #privacy-btn:hover { border-color:#3FB950; color:#3FB950; }
+  </style>
+</head>
+<body>
+
+  <div id="titlebar">
+    <div class="tb-left">
+      <span class="app-title">AI Assistant</span>
+      <span class="badge-free">FREE</span>
+      <span class="badge-hidden" id="privacy-badge">&#128274; Hidden</span>
+      <button id="privacy-btn" onclick="reapplyPrivacy()" title="Privacy reapply karein">&#8635; Privacy</button>
+    </div>
+    <div class="tb-right">
+      <div id="status-dot"></div>
+      <span id="status-lbl">Taiyaar</span>
+      <!-- Position buttons -->
+      <button class="pos-btn" onclick="electronAPI.move('left')"   title="Left move (Ctrl+Shift+Left)">&#8592;</button>
+      <button class="pos-btn" onclick="electronAPI.move('center')" title="Center (Ctrl+Shift+Down)">&#8597;</button>
+      <button class="pos-btn" onclick="electronAPI.move('right')"  title="Right move (Ctrl+Shift+Right)">&#8594;</button>
+      <button class="wbtn"    onclick="electronAPI.minimize()">&#8212;</button>
+      <button class="wbtn cls" onclick="electronAPI.hide()" title="Hide (Ctrl+H)">&#10005;</button>
+    </div>
+  </div>
+
+  <div id="chat">
+    <div id="welcome">
+      <div class="ico">&#129302;</div>
+      <h2>AI Assistant — Free</h2>
+      <p>Screen share mein invisible &#8226; Kuch bhi puchho</p>
+      <div class="chips">
+        <div class="chip" onclick="quickAsk('React kya hai?')">React kya hai?</div>
+        <div class="chip" onclick="quickAsk('Python aur JavaScript mein kya fark hai?')">Python vs JS</div>
+        <div class="chip" onclick="quickAsk('Ek professional email likhne mein help karo')">Email likhna</div>
+        <div class="chip" onclick="quickAsk('SQL joins explain karo examples ke saath')">SQL Joins</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="input-area">
+    <div id="input-box">
+      <textarea id="msg-input" rows="1"
+        placeholder="Kuch bhi puchho... (Enter = bhejein)"></textarea>
+      <button class="ibtn" id="clear-btn">&#128465;</button>
+      <button class="ibtn" id="mic-btn">&#127908; Mic</button>
+      <button id="send-btn">Bhejein &#10148;</button>
+    </div>
+    <div id="bar">Enter: Bhejein &nbsp;|&nbsp; Shift+Enter: Naya line &nbsp;|&nbsp; Ctrl+Shift+Space: Voice &nbsp;|&nbsp; Ctrl+H: Hide &nbsp;|&nbsp; &#8592;&#8594;: Move</div>
+  </div>
+
+<script>
+  const chatEl   = document.getElementById('chat')
+  const inputEl  = document.getElementById('msg-input')
+  const sendEl   = document.getElementById('send-btn')
+  const micEl    = document.getElementById('mic-btn')
+  const clearEl  = document.getElementById('clear-btn')
+  const statusDot= document.getElementById('status-dot')
+  const statusLbl= document.getElementById('status-lbl')
+
+  let history = [{
+    role: 'system',
+    content: 'Aap ek helpful AI assistant hain. Hindi aur English dono mein jawab dein. Code clear aur concise dein.'
+  }]
+  let isRecording = false
+  let recognition = null
+  let typingEl    = null
+
+  inputEl.addEventListener('input', () => {
+    inputEl.style.height = 'auto'
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 100) + 'px'
+  })
+  inputEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
+  })
+  sendEl.addEventListener('click', send)
+  clearEl.addEventListener('click', clearChat)
+  micEl.addEventListener('click', toggleMic)
+  window.electronAPI?.onTriggerVoice?.(() => toggleMic())
+
+  function quickAsk(text) { inputEl.value = text; send() }
+
+  async function send() {
+    const text = inputEl.value.trim()
+    if (!text || sendEl.disabled) return
+    const w = document.getElementById('welcome')
+    if (w) w.remove()
+    addBubble('user', 'Aap', text)
+    history.push({ role: 'user', content: text })
+    inputEl.value = ''
+    inputEl.style.height = 'auto'
+    sendEl.disabled = true
+    setStatus('Soch raha hai...', '#FFA500', '#FFA500')
+    showTyping()
+    const res = await window.electronAPI.askAI(history)
+    removeTyping()
+    if (res.success) {
+      history.push({ role: 'assistant', content: res.reply })
+      addBubble('ai', 'AI', res.reply)
+      setStatus('Taiyaar', '#3FB950', '#3FB950')
+    } else {
+      addBubble('sys', '', 'Error: ' + res.error)
+      setStatus('Error', '#F85149', '#F85149')
+      history.pop()
+    }
+    sendEl.disabled = false
+    inputEl.focus()
+  }
+
+  function addBubble(type, label, text) {
+    const b = document.createElement('div')
+    b.className = 'bubble ' + type
+    if (label) {
+      const r = document.createElement('div')
+      r.className = 'role'
+      r.textContent = label
+      b.appendChild(r)
+    }
+    const c = document.createElement('div')
+    c.innerHTML = fmt(text)
+    b.appendChild(c)
+    chatEl.appendChild(b)
+    scrollBottom()
+  }
+
+  function fmt(t) {
+    let s = t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    s = s.replace(/```(\w*)\n?([\s\S]*?)```/g, (_,l,c) => `<pre>${c.trim()}</pre>`)
+    s = s.replace(/`([^`]+)`/g, '<code>$1</code>')
+    s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    s = s.replace(/\n/g, '<br>')
+    return s
+  }
+
+  function showTyping() {
+    typingEl = document.createElement('div')
+    typingEl.className = 'typing'
+    typingEl.innerHTML = '<div class="dot"></div><div class="dot"></div><div class="dot"></div>'
+    chatEl.appendChild(typingEl)
+    scrollBottom()
+  }
+  function removeTyping() { typingEl?.remove(); typingEl = null }
+
+  async function toggleMic() {
+    if (isRecording) { recognition?.stop(); return }
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true })
+    } catch(err) {
+      setStatus('Mic blocked', '#F85149', '#F85149')
+      addBubble('sys', '', 'Mic access nahi mila. Windows Settings > Privacy > Microphone allow karein.')
+      return
+    }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) {
+      addBubble('sys', '', 'Voice is not supported. Text use karein.')
+      return
+    }
+    recognition = new SR()
+    recognition.lang = 'hi-IN'
+    recognition.interimResults = false
+    recognition.maxAlternatives = 1
+
+    recognition.onstart = () => {
+      isRecording = true
+      micEl.classList.add('on')
+      micEl.textContent = '\u23F9 Rok dein'
+      setStatus('Sun raha hoon...', '#FFA500', '#FFA500')
+    }
+    recognition.onresult = e => {
+      const t = e.results[0][0].transcript
+      inputEl.value = t
+      inputEl.style.height = 'auto'
+      inputEl.style.height = Math.min(inputEl.scrollHeight, 100) + 'px'
+      setStatus('Suna! Enter dabayein', '#3FB950', '#3FB950')
+    }
+    recognition.onerror = e => {
+      const msgs = { 'not-allowed':'Mic blocked', 'no-speech':'Awaaz nahi aayi', 'network':'Internet check karein' }
+      setStatus(msgs[e.error] || 'Mic error', '#F85149', '#F85149')
+    }
+    recognition.onend = () => {
+      isRecording = false
+      micEl.classList.remove('on')
+      micEl.innerHTML = '&#127908; Mic'
+      if (statusLbl.textContent === 'Sun raha hoon...') setStatus('Taiyaar', '#3FB950', '#3FB950')
+    }
+    try { recognition.start() } catch(e) { setStatus('Mic start nahi hua', '#F85149', '#F85149') }
+  }
+
+  function clearChat() {
+    chatEl.innerHTML = ''
+    history = [history[0]]
+    const w = document.createElement('div')
+    w.id = 'welcome'
+    w.style.cssText = 'flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#30363D;text-align:center;padding:30px;'
+    w.innerHTML = '<div style="font-size:36px">&#129302;</div><h2 style="font-size:16px;color:#8B949E;font-weight:500">Naya conversation</h2>'
+    chatEl.appendChild(w)
+    setStatus('Taiyaar', '#3FB950', '#3FB950')
+  }
+
+  function reapplyPrivacy() {
+    window.electronAPI.reapplyPrivacy()
+    const b = document.getElementById('privacy-badge')
+    b.textContent = '&#128274; Applying...'
+    setTimeout(() => { b.innerHTML = '&#128274; Hidden' }, 1500)
+  }
+
+  function scrollBottom() { setTimeout(() => chatEl.scrollTop = chatEl.scrollHeight, 50) }
+  function setStatus(text, color, dc) {
+    statusLbl.textContent = text
+    statusLbl.style.color = color
+    statusDot.style.background = dc
+  }
+
+  window.addEventListener('load', () => inputEl.focus())
+
+  // Har 10 second mein privacy reapply (meeting ke dauran ensure ke liye)
+  setInterval(() => window.electronAPI?.reapplyPrivacy?.(), 10000)
+</script>
+</body>
+</html>

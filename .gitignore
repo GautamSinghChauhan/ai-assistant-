@@ -1,0 +1,91 @@
+# Dependencies
+node_modules/
+
+# Package lock files (optional)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.production
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
+.history/
+
+# Build Output
+dist/
+build/
+out/
+release/
+
+# Electron Builder
+*.exe
+*.msi
+*.deb
+*.rpm
+*.dmg
+*.AppImage
+*.snap
+
+# Electron cache
+.electron/
+.electron-builder/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Cache
+.cache/
+.parcel-cache/
+
+# Generated files
+*.tgz
+
+# Security
+*.pem
+*.key
+*.crt
+
+# IDE
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Local database files
+*.sqlite
+*.db
+
+# Electron generated files
+privacy.exe
+
+# Mac
+*.app
