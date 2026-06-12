@@ -17,19 +17,22 @@ const groq = new Groq({ apiKey: GROQ_API_KEY })
 function applyScreenPrivacy() {
   if (process.platform !== 'win32') return false
   try {
-    const ffi = require('ffi-napi')
-    const ref = require('ref-napi')
+    const koffi = require('koffi')
+    const lib = koffi.load('user32.dll')
 
-    const user32 = ffi.Library('user32', {
-      'SetWindowDisplayAffinity': ['bool', ['pointer', 'uint32']]
-    })
+    const SetWindowDisplayAffinity = lib.func(
+      'bool SetWindowDisplayAffinity(void *hWnd, uint32 dwAffinity)'
+    )
 
-    const hwnd = mainWindow.getNativeWindowHandle()
-    const result = user32.SetWindowDisplayAffinity(hwnd, 0x11)
+    const hwndBuffer = mainWindow.getNativeWindowHandle()
+    const result = SetWindowDisplayAffinity(
+      koffi.decode(hwndBuffer, 'void *'), 
+      0x00000011
+    )
     console.log('Privacy applied:', result)
     return result
   } catch (err) {
-    console.log('FFI error:', err.message)
+    console.error('Privacy error:', err.message)
     return false
   }
 }
@@ -58,14 +61,27 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'index.html'))
 
-  mainWindow.webContents.session.setPermissionRequestHandler(
-    (webContents, permission, callback) => {
-      callback(['media', 'microphone', 'audioCapture'].includes(permission))
-    }
-  )
-  mainWindow.webContents.session.setPermissionCheckHandler(
-    (webContents, permission) => permission === 'media'
-  )
+// Naya — replace karo iske saath
+mainWindow.webContents.session.setPermissionRequestHandler(
+  (webContents, permission, callback) => {
+    const allowed = [
+      'media', 
+      'microphone', 
+      'audioCapture',
+      'speech-recognition',  // ← yeh add kiya
+      'notifications'
+    ]
+    console.log('Permission requested:', permission)
+    callback(allowed.includes(permission))
+  }
+)
+
+mainWindow.webContents.session.setPermissionCheckHandler(
+  (webContents, permission, requestingOrigin, details) => {
+    const allowed = ['media', 'microphone', 'audioCapture', 'speech-recognition']
+    return allowed.includes(permission)
+  }
+)
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show()
