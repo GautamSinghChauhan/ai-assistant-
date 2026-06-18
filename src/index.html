@@ -237,7 +237,9 @@
     content: 'Aap ek helpful AI assistant hain. Hindi aur English dono mein jawab dein. Code clear aur concise dein.'
   }]
   let isRecording = false
-  let recognition = null
+  let mediaStream = null
+  let mediaRecorder = null
+  let audioChunks = []
   let typingEl    = null
 
   inputEl.addEventListener('input', () => {
@@ -316,48 +318,114 @@
   function removeTyping() { typingEl?.remove(); typingEl = null }
 
   async function toggleMic() {
-    if (isRecording) { recognition?.stop(); return }
     try {
-      await navigator.mediaDevices.getUserMedia({ audio: true })
-    } catch(err) {
-      setStatus('Mic blocked', '#F85149', '#F85149')
-      addBubble('sys', '', 'Mic access nahi mila. Windows Settings > Privacy > Microphone allow karein.')
-      return
-    }
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SR) {
-      addBubble('sys', '', 'Voice is not supported. Text use karein.')
-      return
-    }
-    recognition = new SR()
-    recognition.lang = 'hi-IN'
-    recognition.interimResults = false
-    recognition.maxAlternatives = 1
+      if (isRecording) {
+        stopRecording()
+        return
+      }
 
-    recognition.onstart = () => {
-      isRecording = true
-      micEl.classList.add('on')
-      micEl.textContent = '\u23F9 Rok dein'
-      setStatus('Sun raha hoon...', '#FFA500', '#FFA500')
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      } catch(err) {
+        setStatus('Mic blocked', '#F85149', '#F85149')
+        addBubble('sys', '', 'Mic access nahi mila. Windows Settings > Privacy > Microphone allow karein.')
+        return
+      }
+
+      audioChunks = []
+      
+      let options = {}
+      const types = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/wav',
+        'audio/mp4'
+      ]
+      for (const type of types) {
+        if (MediaRecorder.isTypeSupported(type)) {
+          options = { mimeType: type }
+          break
+        }
+      }
+
+      try {
+        mediaRecorder = new MediaRecorder(mediaStream, options)
+      } catch (e) {
+        console.warn('MediaRecorder options failed, trying default', e)
+        mediaRecorder = new MediaRecorder(mediaStream)
+      }
+
+      mediaRecorder.ondataavailable = e => {
+        if (e.data && e.data.size > 0) {
+          audioChunks.push(e.data)
+        }
+      }
+
+      mediaRecorder.onerror = e => {
+        setStatus('Mic error', '#F85149', '#F85149')
+        addBubble('sys', '', 'MediaRecorder error: ' + e.message)
+      }
+
+      mediaRecorder.onstart = () => {
+        isRecording = true
+        micEl.classList.add('on')
+        micEl.textContent = '\u23F9 Rok dein'
+        setStatus('Sun raha hoon...', '#FFA500', '#FFA500')
+      }
+
+      mediaRecorder.onstop = async () => {
+        isRecording = false
+        micEl.classList.remove('on')
+        micEl.innerHTML = '&#127908; Mic'
+        
+        if (mediaStream) {
+          mediaStream.getTracks().forEach(track => track.stop())
+          mediaStream = null
+        }
+
+        setStatus('Awaaz process ho rahi hai...', '#FFA500', '#FFA500')
+
+        const mimeType = mediaRecorder.mimeType || 'audio/webm'
+        const audioBlob = new Blob(audioChunks, { type: mimeType })
+        if (audioBlob.size === 0) {
+          setStatus('Awaaz nahi aayi', '#F85149', '#F85149')
+          return
+        }
+
+        try {
+          const arrayBuffer = await audioBlob.arrayBuffer()
+          const res = await window.electronAPI.transcribeAudio(arrayBuffer, mimeType)
+          if (res.success && res.text && res.text.trim()) {
+            inputEl.value = res.text.trim()
+            inputEl.style.height = 'auto'
+            inputEl.style.height = Math.min(inputEl.scrollHeight, 100) + 'px'
+            setStatus('Suna! Enter dabayein', '#3FB950', '#3FB950')
+          } else {
+            if (res.error) {
+              setStatus('Mic error', '#F85149', '#F85149')
+              addBubble('sys', '', 'Transcription error: ' + res.error)
+            } else {
+              setStatus('Awaaz nahi aayi', '#F85149', '#F85149')
+            }
+          }
+        } catch (err) {
+          setStatus('Mic error', '#F85149', '#F85149')
+          addBubble('sys', '', 'Error: ' + err.message)
+        }
+      }
+
+      mediaRecorder.start()
+    } catch(e) {
+      setStatus('Mic error', '#F85149', '#F85149')
+      addBubble('sys', '', 'Initialization error: ' + e.message)
     }
-    recognition.onresult = e => {
-      const t = e.results[0][0].transcript
-      inputEl.value = t
-      inputEl.style.height = 'auto'
-      inputEl.style.height = Math.min(inputEl.scrollHeight, 100) + 'px'
-      setStatus('Suna! Enter dabayein', '#3FB950', '#3FB950')
+  }
+
+  function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop()
     }
-    recognition.onerror = e => {
-      const msgs = { 'not-allowed':'Mic blocked', 'no-speech':'Awaaz nahi aayi', 'network':'Internet check karein' }
-      setStatus(msgs[e.error] || 'Mic error', '#F85149', '#F85149')
-    }
-    recognition.onend = () => {
-      isRecording = false
-      micEl.classList.remove('on')
-      micEl.innerHTML = '&#127908; Mic'
-      if (statusLbl.textContent === 'Sun raha hoon...') setStatus('Taiyaar', '#3FB950', '#3FB950')
-    }
-    try { recognition.start() } catch(e) { setStatus('Mic start nahi hua', '#F85149', '#F85149') }
   }
 
   function clearChat() {

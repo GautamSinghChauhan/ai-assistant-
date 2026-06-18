@@ -2,6 +2,8 @@ require('dotenv').config()
 
 const { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, nativeImage, screen } = require('electron')
 const path = require('path')
+const fs = require('fs')
+const os = require('os')
 const Groq = require('groq-sdk')
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY
@@ -162,6 +164,44 @@ ipcMain.handle('ask-ai', async (event, messages) => {
     return { success: true, reply: response.choices[0].message.content }
   } catch (err) {
     return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('transcribe-audio', async (event, arrayBuffer, mimeType) => {
+  let tempFilePath = null
+  try {
+    const buffer = Buffer.from(arrayBuffer)
+    const tempDir = os.tmpdir()
+
+    // Determine extension from mimeType
+    let ext = 'webm'
+    if (mimeType) {
+      const match = mimeType.match(/audio\/([^;]+)/)
+      if (match && match[1]) {
+        ext = match[1]
+      }
+    }
+
+    tempFilePath = path.join(tempDir, `voice-${Date.now()}.${ext}`)
+    await fs.promises.writeFile(tempFilePath, buffer)
+
+    const response = await groq.audio.transcriptions.create({
+      file: fs.createReadStream(tempFilePath),
+      model: 'whisper-large-v3',
+    })
+
+    return { success: true, text: response.text }
+  } catch (err) {
+    console.error('Transcription error:', err)
+    return { success: false, error: err.message }
+  } finally {
+    if (tempFilePath) {
+      try {
+        await fs.promises.unlink(tempFilePath)
+      } catch (err) {
+        console.error('Failed to delete temp audio file:', err)
+      }
+    }
   }
 })
 
