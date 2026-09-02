@@ -154,17 +154,31 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(
 app.on('will-quit', () => globalShortcut.unregisterAll())
 
 ipcMain.handle('ask-ai', async (event, messages) => {
-  try {
-    const response = await groq.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
-      messages,
-      max_tokens: 1500,
-      temperature: 0.7
-    })
-    return { success: true, reply: response.choices[0].message.content }
-  } catch (err) {
-    return { success: false, error: err.message }
+  const models = [
+    'groq/compound',
+    'groq/compound-mini',
+    'openai/gpt-oss-120b',
+    'qwen/qwen3.8-27b',
+    'openai/gpt-oss-20b'
+  ]
+  let lastError = null
+
+  for (const model of models) {
+    try {
+      const response = await groq.chat.completions.create({
+        model,
+        messages,
+        max_tokens: 1500,
+        temperature: 0.7
+      })
+      return { success: true, reply: response.choices[0].message.content }
+    } catch (err) {
+      console.warn(`Model ${model} failed:`, err.message)
+      lastError = err
+    }
   }
+
+  return { success: false, error: lastError?.message || 'Failed to generate response' }
 })
 
 ipcMain.handle('transcribe-audio', async (event, arrayBuffer, mimeType) => {
