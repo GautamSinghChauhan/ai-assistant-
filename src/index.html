@@ -34,6 +34,16 @@
     }
     .tb-left { display:flex; align-items:center; gap:8px; }
     .app-title { font-size:13px; font-weight:600; color:#E6EDF3; }
+    .badge-gemini {
+      font-size:10px; background:linear-gradient(135deg, #1A2A4A, #2A1A4A); color:#8AB4F8;
+      padding:2px 7px; border-radius:20px; border:1px solid #4285F4; font-weight:600;
+    }
+    .model-dropdown {
+      background:#161B22; color:#8AB4F8; border:1px solid #30363D;
+      border-radius:6px; padding:2px 6px; font-size:11px; outline:none;
+      cursor:pointer; -webkit-app-region: no-drag; font-family:inherit;
+    }
+    .model-dropdown:hover { border-color:#4285F4; }
     .badge-free {
       font-size:10px; background:#1A3320; color:#3FB950;
       padding:2px 7px; border-radius:20px; border:1px solid #2EA043; font-weight:600;
@@ -182,7 +192,12 @@
   <div id="titlebar">
     <div class="tb-left">
       <span class="app-title">AI Assistant</span>
-      <span class="badge-free">FREE</span>
+      <span class="badge-gemini">✨ GEMINI PRO</span>
+      <select id="model-select" class="model-dropdown" title="Select Model">
+        <option value="gemini-3.6-flash" selected>Gemini 3.6 Flash</option>
+        <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+        <option value="gemini-1.5-flash-latest">Gemini 1.5 Flash (Latest)</option>
+      </select>
       <span class="badge-hidden" id="privacy-badge">&#128274; Hidden</span>
       <button id="privacy-btn" onclick="reapplyPrivacy()" title="Privacy reapply karein">&#8635; Privacy</button>
     </div>
@@ -200,9 +215,9 @@
 
   <div id="chat">
     <div id="welcome">
-      <div class="ico">&#129302;</div>
-      <h2>AI Assistant — Free</h2>
-      <p>Screen share mein invisible &#8226; Kuch bhi puchho</p>
+      <div class="ico">✨</div>
+      <h2>AI Assistant — Gemini AI</h2>
+      <p>Powered by Google Gemini API &#8226; Screen share invisible</p>
       <div class="chips">
         <div class="chip" onclick="quickAsk('React kya hai?')">React kya hai?</div>
         <div class="chip" onclick="quickAsk('Python aur JavaScript mein kya fark hai?')">Python vs JS</div>
@@ -268,11 +283,15 @@
     sendEl.disabled = true
     setStatus('Soch raha hai...', '#FFA500', '#FFA500')
     showTyping()
-    const res = await window.electronAPI.askAI(history)
+
+    const modelSelectVal = document.getElementById('model-select')?.value || 'gemini-3.6-flash'
+    const model = modelSelectVal.includes(':') ? modelSelectVal.split(':')[1] : modelSelectVal
+
+    const res = await window.electronAPI.askAI(history, { model })
     removeTyping()
     if (res.success) {
       history.push({ role: 'assistant', content: res.reply })
-      addBubble('ai', 'AI', res.reply)
+      addBubble('ai', 'Gemini AI', res.reply)
       setStatus('Taiyaar', '#3FB950', '#3FB950')
     } else {
       addBubble('sys', '', 'Error: ' + res.error)

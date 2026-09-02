@@ -1,20 +1,26 @@
 require('dotenv').config()
+const dns = require('dns')
+
+// Force IPv4 resolution first in Node.js to resolve 'fetch failed' errors on Windows/dual-stack networks
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first')
+}
 
 const { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, nativeImage, screen } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const os = require('os')
-const Groq = require('groq-sdk')
+const { GoogleGenerativeAI } = require('@google/generative-ai')
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 
-console.log('API Key Loaded:', !!GROQ_API_KEY)
+console.log('GEMINI API Key Loaded:', !!GEMINI_API_KEY)
 
 // ============================================
 
 let mainWindow
 let tray
-const groq = new Groq({ apiKey: GROQ_API_KEY })
+const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null
 
 function applyScreenPrivacy() {
   if (process.platform !== 'win32') return false
@@ -153,55 +159,125 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 app.on('will-quit', () => globalShortcut.unregisterAll())
 
-ipcMain.handle('ask-ai', async (event, messages) => {
+async function callGemini(messages, modelName = 'gemini-3.6-flash') {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY missing in .env file. Please add your GEMINI_API_KEY to the .env file.')
+  }
+  const client = genAI || new GoogleGenerativeAI(apiKey)
+
+  let systemInstruction = 'Aap ek helpful AI assistant hain. Hindi aur English dono mein jawab dein. Code clear aur concise dein.'
+  const contents = []
+
+  for (const msg of messages) {
+    if (msg.role === 'system') {
+      systemInstruction = msg.content
+    } else if (msg.role === 'user') {
+      contents.push({
+        role: 'user',
+        parts: [{ text: msg.content }]
+      })
+    } else if (msg.role === 'assistant' || msg.role === 'model') {
+      contents.push({
+        role: 'model',
+        parts: [{ text: msg.content }]
+      })
+    }
+  }
+
+  if (contents.length === 0) {
+    throw new Error('No messages to send.')
+  }
+
+  // Model fallback candidate list
+  const candidateModels = [
+    modelName,
+    'gemini-3.6-flash',
+    'gemini-2.5-flash',
+    'gemini-1.5-flash-latest'
+  ]
+  const modelsToTry = [...new Set(candidateModels.filter(Boolean))]
+
+  let lastError = null
+  for (const targetModel of modelsToTry) {
+    try {
+      console.log(`Calling Gemini API with model: ${targetModel}`)
+      const model = client.getGenerativeModel({
+        model: targetModel,
+        systemInstruction: systemInstruction
+      })
+
+      const result = await model.generateContent({ contents })
+      const response = await result.response
+      return response.text()
+    } catch (err) {
+      console.warn(`Gemini model '${targetModel}' failed:`, err.message)
+      lastError = err
+      // If error is 404 (model not found), try next model in fallback list
+      if (err.message.includes('404') || err.message.includes('not found')) {
+        continue
+      }
+      throw err
+    }
+  }
+  throw lastError
+}
+
+ipcMain.handle('ask-ai', async (event, messages, options = {}) => {
+  const modelName = options.model || 'gemini-3.6-flash'
+
   try {
-    const response = await groq.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
-      messages,
-      max_tokens: 1500,
-      temperature: 0.7
-    })
-    return { success: true, reply: response.choices[0].message.content }
+    const reply = await callGemini(messages, modelName)
+    return { success: true, reply, provider: 'gemini' }
   } catch (err) {
-    return { success: false, error: err.message }
+    console.error('AI Processing Error:', err)
+    let userMessage = err.message
+    if (userMessage.includes('fetch failed')) {
+      userMessage = 'Network Error (fetch failed): Unable to reach Google Gemini API servers. Please check your internet connection or turn off active VPN/Proxies if any.'
+    } else if (userMessage.includes('429') || userMessage.includes('Quota exceeded')) {
+      userMessage = 'Gemini API Quota Exceeded. Please get a free key from https://aistudio.google.com/app/apikey.'
+    } else if (userMessage.includes('404') || userMessage.includes('not found')) {
+      userMessage = 'Selected model not supported by this API key. Tried fallback models but none were available for your key.'
+    }
+    return { success: false, error: userMessage }
   }
 })
 
 ipcMain.handle('transcribe-audio', async (event, arrayBuffer, mimeType) => {
-  let tempFilePath = null
   try {
-    const buffer = Buffer.from(arrayBuffer)
-    const tempDir = os.tmpdir()
+    const apiKey = process.env.GEMINI_API_KEY
+    if (!apiKey) throw new Error('GEMINI_API_KEY missing in .env file.')
 
-    // Determine extension from mimeType
-    let ext = 'webm'
-    if (mimeType) {
-      const match = mimeType.match(/audio\/([^;]+)/)
-      if (match && match[1]) {
-        ext = match[1]
+    const client = genAI || new GoogleGenerativeAI(apiKey)
+    const base64Audio = Buffer.from(arrayBuffer).toString('base64')
+    const modelsToTry = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-1.5-flash-latest']
+
+    let lastErr = null
+    for (const targetModel of modelsToTry) {
+      try {
+        const model = client.getGenerativeModel({ model: targetModel })
+        const result = await model.generateContent([
+          {
+            inlineData: {
+              mimeType: mimeType || 'audio/webm',
+              data: base64Audio
+            }
+          },
+          'Transcribe this audio recording exactly as spoken. Return ONLY the transcribed text without any extra comments.'
+        ])
+
+        const response = await result.response
+        return { success: true, text: response.text().trim() }
+      } catch (err) {
+        lastErr = err
+        if (err.message.includes('404') || err.message.includes('not found')) continue
+        throw err
       }
     }
-
-    tempFilePath = path.join(tempDir, `voice-${Date.now()}.${ext}`)
-    await fs.promises.writeFile(tempFilePath, buffer)
-
-    const response = await groq.audio.transcriptions.create({
-      file: fs.createReadStream(tempFilePath),
-      model: 'whisper-large-v3',
-    })
-
-    return { success: true, text: response.text }
+    throw lastErr
   } catch (err) {
     console.error('Transcription error:', err)
     return { success: false, error: err.message }
-  } finally {
-    if (tempFilePath) {
-      try {
-        await fs.promises.unlink(tempFilePath)
-      } catch (err) {
-        console.error('Failed to delete temp audio file:', err)
-      }
-    }
   }
 })
 

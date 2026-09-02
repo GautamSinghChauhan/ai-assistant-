@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  askAI:          (messages) => ipcRenderer.invoke('ask-ai', messages),
+  askAI:          (messages, options) => ipcRenderer.invoke('ask-ai', messages, options),
   onTriggerVoice: (cb) => ipcRenderer.on('trigger-voice', cb),
   transcribeAudio:(arrayBuffer, mimeType) => ipcRenderer.invoke('transcribe-audio', arrayBuffer, mimeType),
   minimize:       () => ipcRenderer.send('window-minimize'),
