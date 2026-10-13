@@ -56,6 +56,7 @@ function createWindow() {
     frame: false,
     backgroundColor: '#0D1117',
     alwaysOnTop: true,
+    skipTaskbar: true,
     x: width - 800,
     y: Math.floor((height - 640) / 2),
     title: 'AI Assistant',
@@ -192,11 +193,9 @@ async function callGemini(messages, modelName = 'gemini-3.6-flash') {
   // Model fallback candidate list
   const candidateModels = [
     modelName,
-    'gemini-3.6-flash',
-    'gemini-2.5-flash',
-    'gemini-1.5-flash-latest'
+    'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-flash-lite-latest'
   ]
-  const modelsToTry = [...new Set(candidateModels.filter(Boolean))]
+  const modelsToTry = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-flash-lite-latest']
 
   let lastError = null
   for (const targetModel of modelsToTry) {
@@ -214,17 +213,14 @@ async function callGemini(messages, modelName = 'gemini-3.6-flash') {
       console.warn(`Gemini model '${targetModel}' failed:`, err.message)
       lastError = err
       // If error is 404 (model not found), try next model in fallback list
-      if (err.message.includes('404') || err.message.includes('not found')) {
-        continue
-      }
-      throw err
+      continue
     }
   }
   throw lastError
 }
 
 ipcMain.handle('ask-ai', async (event, messages, options = {}) => {
-  const modelName = options.model || 'gemini-3.6-flash'
+  const modelName = options.model || 'gemini-3.5-flash'
 
   try {
     const reply = await callGemini(messages, modelName)
@@ -250,7 +246,7 @@ ipcMain.handle('transcribe-audio', async (event, arrayBuffer, mimeType) => {
 
     const client = genAI || new GoogleGenerativeAI(apiKey)
     const base64Audio = Buffer.from(arrayBuffer).toString('base64')
-    const modelsToTry = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-1.5-flash-latest']
+    const modelsToTry = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-flash-lite-latest']
 
     let lastErr = null
     for (const targetModel of modelsToTry) {
@@ -263,15 +259,20 @@ ipcMain.handle('transcribe-audio', async (event, arrayBuffer, mimeType) => {
               data: base64Audio
             }
           },
-          'Transcribe this audio recording exactly as spoken. Return ONLY the transcribed text without any extra comments.'
+          'Transcribe this audio recording exactly as spoken into text (Hindi or English). Do not return tokens like <noise>, <silence>, or [noise]. Return ONLY the spoken words, or empty string if no clear voice.'
         ])
 
         const response = await result.response
-        return { success: true, text: response.text().trim() }
+        const rawText = response.text().trim();
+        const cleaned = rawText.replace(/<[^>]+>/g, '').replace(/\[[^\]]+\]/g, '').trim();
+        if (!cleaned || cleaned.toLowerCase() === 'noise' || cleaned.toLowerCase() === 'silence') {
+          return { success: false, error: 'Awaaz saaf nahi sunai di. Kripya thoda paas aakar bolein.' }
+        }
+        return { success: true, text: cleaned }
       } catch (err) {
         lastErr = err
-        if (err.message.includes('404') || err.message.includes('not found')) continue
-        throw err
+        console.warn('Gemini audio model ' + targetModel + ' failed:', err.message)
+        continue
       }
     }
     throw lastErr

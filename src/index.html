@@ -165,7 +165,15 @@
       font-family:inherit; transition:all 0.15s; white-space:nowrap; flex-shrink:0;
     }
     .ibtn:hover { background:#21262D; color:#E6EDF3; border-color:#555; }
-    #mic-btn.on { background:#2D0F0F; border-color:#F85149; color:#F85149; animation:glow 1s infinite; }
+    
+    .mic-select {
+      background:#010409; border:1px solid #30363D; color:#8B949E;
+      border-radius:7px; padding:4px 6px; font-size:11px; cursor:pointer;
+      font-family:inherit; transition:all 0.15s; outline:none;
+      max-width:130px; text-overflow:ellipsis; white-space:nowrap; flex-shrink:0;
+    }
+    .mic-select:hover { border-color:#58A6FF; color:#E6EDF3; }
+#mic-btn.on { background:#2D0F0F; border-color:#F85149; color:#F85149; animation:glow 1s infinite; }
     @keyframes glow { 0%,100%{opacity:1} 50%{opacity:0.6} }
 
     #send-btn {
@@ -194,10 +202,10 @@
       <span class="app-title">AI Assistant</span>
       <span class="badge-gemini">✨ GEMINI PRO</span>
       <select id="model-select" class="model-dropdown" title="Select Model">
-        <option value="gemini-3.6-flash" selected>Gemini 3.6 Flash</option>
-        <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-        <option value="gemini-1.5-flash-latest">Gemini 1.5 Flash (Latest)</option>
-      </select>
+          <option value="gemini-3.5-flash" selected>Gemini 3.5 Flash (Active)</option>
+          <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash Lite</option>
+          <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
+        </select>
       <span class="badge-hidden" id="privacy-badge">&#128274; Hidden</span>
       <button id="privacy-btn" onclick="reapplyPrivacy()" title="Privacy reapply karein">&#8635; Privacy</button>
     </div>
@@ -231,6 +239,9 @@
     <div id="input-box">
       <textarea id="msg-input" rows="1"
         placeholder="Kuch bhi puchho... (Enter = bhejein)"></textarea>
+      <select id="mic-select" class="mic-select" title="Microphone chunein">
+        <option value="default">&#127908; Default Mic</option>
+      </select>
       <button class="ibtn" id="clear-btn">&#128465;</button>
       <button class="ibtn" id="mic-btn">&#127908; Mic</button>
       <button id="send-btn">Bhejein &#10148;</button>
@@ -284,7 +295,7 @@
     setStatus('Soch raha hai...', '#FFA500', '#FFA500')
     showTyping()
 
-    const modelSelectVal = document.getElementById('model-select')?.value || 'gemini-3.6-flash'
+    const modelSelectVal = document.getElementById('model-select')?.value || 'gemini-3.5-flash'
     const model = modelSelectVal.includes(':') ? modelSelectVal.split(':')[1] : modelSelectVal
 
     const res = await window.electronAPI.askAI(history, { model })
@@ -336,6 +347,32 @@
   }
   function removeTyping() { typingEl?.remove(); typingEl = null }
 
+    const micSelect = document.getElementById('mic-select')
+
+  async function updateAudioDevices() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const audioInputs = devices.filter(d => d.kind === 'audioinput')
+      if (!micSelect) return
+      const currentVal = micSelect.value
+      micSelect.innerHTML = '<option value="default">&#127908; Default Mic</option>'
+      audioInputs.forEach((device, idx) => {
+        const opt = document.createElement('option')
+        opt.value = device.deviceId
+        opt.textContent = device.label || `Mic ${idx + 1}`
+        micSelect.appendChild(opt)
+      })
+      if (currentVal && audioInputs.some(d => d.deviceId === currentVal)) {
+        micSelect.value = currentVal
+      }
+    } catch (e) {
+      console.warn('Audio devices enumeration error:', e)
+    }
+  }
+
+  navigator.mediaDevices?.addEventListener?.('devicechange', updateAudioDevices)
+  window.addEventListener('load', () => updateAudioDevices())
+
   async function toggleMic() {
     try {
       if (isRecording) {
@@ -343,13 +380,29 @@
         return
       }
 
-      try {
-        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      } catch(err) {
-        setStatus('Mic blocked', '#F85149', '#F85149')
-        addBubble('sys', '', 'Mic access nahi mila. Windows Settings > Privacy > Microphone allow karein.')
-        return
+      const selectedDeviceId = micSelect?.value
+      const audioConstraints = {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
       }
+      if (selectedDeviceId && selectedDeviceId !== 'default') {
+        audioConstraints.deviceId = { exact: selectedDeviceId }
+      }
+
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints })
+      } catch (err) {
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        } catch (innerErr) {
+          setStatus('Mic blocked', '#F85149', '#F85149')
+          addBubble('sys', '', 'Mic access nahi mila. Windows Settings > Privacy > Microphone allow karein.')
+          return
+        }
+      }
+
+      updateAudioDevices()
 
       audioChunks = []
       
@@ -434,7 +487,7 @@
         }
       }
 
-      mediaRecorder.start()
+      mediaRecorder.start(250)
     } catch(e) {
       setStatus('Mic error', '#F85149', '#F85149')
       addBubble('sys', '', 'Initialization error: ' + e.message)
